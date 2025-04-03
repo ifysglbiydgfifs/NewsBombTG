@@ -12,6 +12,7 @@ emb = NewsEmbedding()
 morph_tagger = NewsMorphTagger(emb)
 syntax_parser = NewsSyntaxParser(emb)
 ner_tagger = NewsNERTagger(emb)
+session = Session(engine)
 
 def extract_entities(text):
     doc = Doc(text)
@@ -27,11 +28,7 @@ def extract_entities(text):
 
     return entities
 
-entities = []
-
-session = Session(engine)
-
-def save_news_and_entities(messages):
+def extract_and_save_entities(messages):
     for message in messages:
         text = message['text']
         link = message['link']
@@ -40,15 +37,10 @@ def save_news_and_entities(messages):
 
         existing_news = session.query(News).filter_by(text=text).first()
         if existing_news:
-            if not existing_news.link or existing_news.link == "(нет ссылки)":
-                existing_news.link = link
-                session.commit()
             news_id = existing_news.id
         else:
             print(link)
             new_news = News(title="Новость", text=text, link=link)
-            session.add(new_news)
-            session.commit()
             news_id = new_news.id
 
         extracted_entities = extract_entities(text)
