@@ -1,3 +1,6 @@
+from database import SessionLocal
+from models import UserChannel
+
 def convert_url(url):
     url = url.strip()
 
@@ -7,10 +10,3 @@ def convert_url(url):
         channel_name = url.split("/")[-1]
         return f"https://t.me/s/{channel_name}"
     return url
-
-def process_channels(user_id):
-    db = SessionLocal()
-    channels = db.query(UserChannel).filter_by(user_id=user_id).all()
-    urls = [convert_url(ch.channel_url) for ch in channels]
-    db.close()
-    return urls

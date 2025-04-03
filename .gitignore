@@ -2,3 +2,5 @@
 /.venv
 /cc.ru.300.bin
 /__pycache__
+.env
+.gitignore
