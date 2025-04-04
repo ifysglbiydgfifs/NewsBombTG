@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 # try:
 #     fasttext.util.download_model('ru', if_exists='ignore')  # Загрузка модели
-#     model = fasttext.load_model('cc.ru.300.bin')  # Подключаем FastText
+model = fasttext.load_model('cc.ru.300.bin')  # Подключаем FastText
 #     logger.info("FastText model loaded successfully.")
 # except MemoryError as e:
 #     logger.error(f"MemoryError: {e}")
