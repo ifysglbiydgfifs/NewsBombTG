@@ -6,11 +6,11 @@ from parser_init import parse
 from datetime import datetime
 import asyncio
 
-START_DATE, END_DATE, ADD_CHANNEL = range(3)
+START_DATE, END_DATE, ADD_CHANNEL, REMOVE_CHANNEL = range(4)  # Добавили REMOVE_CHANNEL
 session = Session(engine)
 
 ADMIN_ID = 123456789
-is_parsing = False  # Флаг для блокировки кнопок во время парсинга
+is_parsing = False
 
 def is_admin(user_id):
     return user_id == ADMIN_ID
@@ -30,7 +30,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [KeyboardButton("▶️ Начать парсинг")],
         [KeyboardButton("⭐ Избранные каналы")],
         [KeyboardButton("➕ Добавить в избранное")],
-        [KeyboardButton("🌐 Открыть веб-приложение", web_app=WebAppInfo("https://news-bomb-production.up.railway.app/"))],
+        [KeyboardButton("➖ Удалить из избранного")],  # Кнопка для удаления
+        [KeyboardButton("🌐 Открыть веб-приложение")],
         [KeyboardButton("🛠 Админ-панель")]
     ]
     markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -69,13 +70,21 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Отправьте ссылку на канал:")
         return ADD_CHANNEL
 
+    elif text == "➖ Удалить из избранного":  # Новый блок для удаления
+        user_id = update.effective_user.id
+        db_user = session.query(User).filter_by(telegram_id=user_id).first()
+        favorites = session.query(UserChannel).filter_by(user_id=db_user.id).all()
+        if not favorites:
+            await update.message.reply_text("У вас нет избранных каналов для удаления.")
+        else:
+            msg = "\n".join([f"{i+1}. {ch.channel_url}" for i, ch in enumerate(favorites)])
+            await update.message.reply_text(f"Выберите канал для удаления:\n{msg}")
+            context.user_data['favorites'] = favorites
+            return REMOVE_CHANNEL
+
     elif text == "🌐 Открыть веб-приложение":
-        await update.message.reply_text(
-            "Открою веб-приложение:",
-            reply_markup=ReplyKeyboardMarkup([[
-                KeyboardButton("Открыть приложение", web_app=WebAppInfo("https://news-bomb-production.up.railway.app/"))
-            ]])
-        )
+        await update.message.reply_text("Введите дату начала (ГГГГ-ММ-ДД):")
+        return START_DATE
 
     elif text == "🛠 Админ-панель":
         await update.message.reply_text("🛠 В разработке.")
@@ -86,27 +95,24 @@ async def get_start_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return END_DATE
 
 async def get_end_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global is_parsing
-    is_parsing = True
+    start_date = context.user_data['start_date']
+    end_date = update.message.text
 
     try:
-        start_date = datetime.strptime(context.user_data['start_date'], '%Y-%m-%d')
-        end_date = datetime.strptime(update.message.text, '%Y-%m-%d')
-        favorites = context.user_data['favorites']
+        # Проверим формат дат
+        datetime.strptime(start_date, '%Y-%m-%d')
+        datetime.strptime(end_date, '%Y-%m-%d')
 
-        await update.message.reply_text("🔄 Парсинг в процессе, пожалуйста, подождите...")
+        # После получения дат открываем веб-приложение с параметрами
+        url = f"https://news-bomb-production.up.railway.app/?start_date={start_date}&end_date={end_date}"
+        await update.message.reply_text(f"Открою веб-приложение с датами:\nНачало: {start_date}\nКонец: {end_date}",
+                                       reply_markup=ReplyKeyboardMarkup([[
+                                           KeyboardButton("Открыть приложение", web_app=WebAppInfo(url))
+                                       ]]))
+    except ValueError:
+        await update.message.reply_text("❌ Неверный формат даты. Пожалуйста, введите даты в формате ГГГГ-ММ-ДД.")
+        return END_DATE
 
-
-        for fav in favorites:
-            link = fav.channel_url
-            channel_name = link.split("/")[-1]
-            parse(link, start_date, end_date, channel_name)
-
-        await update.message.reply_text(f"✅ Парсинг завершен.")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Ошибка: {e}")
-    finally:
-        is_parsing = False
     return ConversationHandler.END
 
 async def add_to_favorites(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -125,6 +131,22 @@ async def add_to_favorites(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("✅ Канал добавлен в избранное!")
         except Exception as e:
             await update.message.reply_text(f"❌ Ошибка при добавлении: {e}")
+    return ConversationHandler.END
+
+async def remove_from_favorites(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    choice = update.message.text.strip()
+    try:
+        channel_index = int(choice) - 1
+        favorites = context.user_data['favorites']
+        if 0 <= channel_index < len(favorites):
+            channel_to_remove = favorites[channel_index]
+            session.delete(channel_to_remove)
+            session.commit()
+            await update.message.reply_text(f"✅ Канал {channel_to_remove.channel_url} удален из избранного.")
+        else:
+            await update.message.reply_text("❌ Неверный выбор.")
+    except ValueError:
+        await update.message.reply_text("❌ Пожалуйста, введите номер канала.")
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -159,7 +181,7 @@ async def view_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(stats)
 
 def main():
-    app = Application.builder().token("7735571468:AAFlFNzK9K68hpkafy3e_GzHpYqqzzk722U").build()
+    app = Application.builder().token("YOUR_BOT_TOKEN").build()
 
     conv_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler)],
@@ -167,6 +189,7 @@ def main():
             START_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_start_date)],
             END_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_end_date)],
             ADD_CHANNEL: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_to_favorites)],
+            REMOVE_CHANNEL: [MessageHandler(filters.TEXT & ~filters.COMMAND, remove_from_favorites)],  # Новый state
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
