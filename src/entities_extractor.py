@@ -28,6 +28,7 @@ def extract_entities(text):
 
     return entities
 
+
 def extract_and_save_entities(messages):
     for message in messages:
         text = message['text']
@@ -41,6 +42,8 @@ def extract_and_save_entities(messages):
         else:
             print(link)
             new_news = News(title="Новость", text=text, link=link)
+            session.add(new_news)
+            session.commit()
             news_id = new_news.id
 
         extracted_entities = extract_entities(text)
@@ -61,9 +64,22 @@ def extract_and_save_entities(messages):
                 entity_ids.append(new_entity.id)
 
         if entity_ids:
+            entity_ids = list(set(entity_ids))
+            linked_entities = ",".join(map(str, entity_ids))
+
             print(f"🔗 Связываем новость ID {news_id} с сущностями {entity_ids}")
+
+            for entity_id in entity_ids:
+                entity = session.query(Entity).filter_by(id=entity_id).first()
+                if entity:
+                    other_ids = [eid for eid in entity_ids if eid != entity.id]
+                    if other_ids:
+                        entity.link = ",".join(map(str, other_ids))
+                    else:
+                        entity.link = None
+                    session.add(entity)
+
             link_news_entities(news_id, entity_ids)
         else:
             print(f"⚠️ Не найдено сущностей для новости ID {news_id}")
-
     session.commit()

@@ -11,7 +11,6 @@ from datetime import datetime
 START_DATE, END_DATE, ADD_CHANNEL = range(3)
 session = Session(engine)
 
-# Старт и добавление пользователя
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     telegram_id = user.id
@@ -33,8 +32,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     await update.message.reply_text("Выберите действие:", reply_markup=markup)
 
-
-# Обработка нажатий
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
 
@@ -74,15 +71,11 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "🛠 Админ-панель":
         await update.message.reply_text("🛠 В разработке.")
 
-
-# Получение даты начала
 async def get_start_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['start_date'] = update.message.text
     await update.message.reply_text("Введите дату конца (ГГГГ-ММ-ДД):")
     return END_DATE
 
-
-# Получение даты конца и парсинг
 async def get_end_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         start_date = datetime.strptime(context.user_data['start_date'], '%Y-%m-%d')
@@ -92,7 +85,6 @@ async def get_end_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for fav in favorites:
             link = fav.channel_url
             channel_name = link.split("/")[-1]
-            # Парсим и сохраняем сообщения в таблицу news
             parse(link, start_date, end_date, channel_name)
 
         await update.message.reply_text(f"✅ Парсинг завершен.")
@@ -100,9 +92,6 @@ async def get_end_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Ошибка: {e}")
     return ConversationHandler.END
 
-
-
-# Добавление в избранное
 async def add_to_favorites(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
     user_id = update.effective_user.id
@@ -121,8 +110,6 @@ async def add_to_favorites(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"❌ Ошибка при добавлении: {e}")
     return ConversationHandler.END
 
-
-# Отмена
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❌ Действие отменено.")
     return ConversationHandler.END

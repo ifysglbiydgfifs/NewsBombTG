@@ -76,7 +76,7 @@ def get_messages_from_channel(url, from_date, to_date, channel_name):
                             data_post = data_post_element.get_attribute('data-post')
 
                             if data_post:
-                                post_id = data_post.split('/')[-1]  # Берём последний элемент после "/"
+                                post_id = data_post.split('/')[-1]
                                 post_link = f"https://t.me/{channel_name}/{post_id}"
                             else:
                                 post_link = "(нет ссылки)"
