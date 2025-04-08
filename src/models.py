@@ -41,7 +41,7 @@ class News(Base):
     title = Column(String, nullable=False)
     text = Column(String, nullable=False)
     time = Column(BigInteger, nullable=False)
-    link = Column(String, nullable=False)
+    link = Column(String, nullable=True)
 
     entities = relationship("Entity", secondary=news_entity_link, back_populates="news")
 

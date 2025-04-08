@@ -92,12 +92,14 @@ async def get_end_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for fav in favorites:
             link = fav.channel_url
             channel_name = link.split("/")[-1]
+            # Парсим и сохраняем сообщения в таблицу news
             parse(link, start_date, end_date, channel_name)
 
         await update.message.reply_text(f"✅ Парсинг завершен.")
     except Exception as e:
         await update.message.reply_text(f"❌ Ошибка: {e}")
     return ConversationHandler.END
+
 
 
 # Добавление в избранное
