@@ -20,7 +20,8 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     telegram_id = Column(BigInteger, unique=True, index=True, nullable=False)
     username = Column(String, unique=True, nullable=True)
-    credits = Column(Integer, default=0)  # Внутренняя валюта
+    credits = Column(Integer, default=0)
+
     channels = relationship("Channel", back_populates="user", cascade="all, delete-orphan")
 
 class Entity(Base):
@@ -52,6 +53,13 @@ class UserChannel(Base):
     channel_url = Column(String, nullable=False)
 
     user = relationship("User", back_populates="channels")
+
+class Digest(Base):
+    __tablename__ = "digests"
+
+    id = Column(Integer, primary_key=True)
+    type = Column(String, nullable=False)
+    content = Column(String, nullable=False)
 
 User.channels = relationship("UserChannel", back_populates="user")
 

@@ -1,7 +1,7 @@
 from parser import get_messages_from_channel
 from url_converter import convert_url
 from datetime import datetime
-from models import News, engine, news_entity_link, Entity
+from models import News, engine, news_entity_link, Entity, Digest
 from sqlalchemy.orm import Session
 from clusterization import clusterization_start
 from digest_generator import generate_digest
@@ -13,6 +13,7 @@ def parse(link: str, from_date: datetime, to_date: datetime, channel_name: str):
     session.query(news_entity_link).delete()
     session.query(Entity).delete()
     session.query(News).delete()
+    session.query(Digest).delete()
     session.commit()
 
     url = convert_url(link)
@@ -35,7 +36,6 @@ def parse(link: str, from_date: datetime, to_date: datetime, channel_name: str):
             session.add(new_news)
             session.commit()
 
-    generate_digest(messages)
     extract_and_save_entities(messages)
     clusterization_start()
 
