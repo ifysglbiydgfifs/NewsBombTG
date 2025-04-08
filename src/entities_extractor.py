@@ -5,6 +5,7 @@ from natasha import (
 from entity_link import link_news_entities
 from models import News, Entity, engine, news_entity_link, Digest
 from sqlalchemy.orm import Session
+import time
 
 from digest_generator import generate_digest
 
@@ -61,7 +62,7 @@ def extract_and_save_entities(messages):
             if existing_entity:
                 entity_ids.append(existing_entity.id)
             else:
-                new_entity = Entity(name=entity_text, type=entity_type)
+                new_entity = Entity(name=entity_text, type=entity_type, time=int(time.time() * 1000))  # Время в миллисекундах
                 session.add(new_entity)
                 session.commit()
                 entity_ids.append(new_entity.id)
@@ -101,3 +102,4 @@ def extract_and_save_entities(messages):
             print(f"✅ Новый дайджест создан для темы: {topic}")
 
     session.commit()
+

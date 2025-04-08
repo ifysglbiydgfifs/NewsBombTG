@@ -32,6 +32,7 @@ class Entity(Base):
     type = Column(String, nullable=False)
     cluster_id = Column(Integer, nullable=True)
     link = Column(String, nullable=True)
+    time = Column(BigInteger, nullable=False)
 
     news = relationship("News", secondary=news_entity_link, back_populates="entities")
 
@@ -41,8 +42,8 @@ class News(Base):
     id = Column(Integer, primary_key=True)
     title = Column(String, nullable=False)
     text = Column(String, nullable=False)
-    time = Column(BigInteger, nullable=False)
     link = Column(String, nullable=True)
+    time = Column(BigInteger, nullable=False)
 
     entities = relationship("Entity", secondary=news_entity_link, back_populates="news")
 

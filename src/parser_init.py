@@ -10,11 +10,7 @@ from entities_extractor import extract_and_save_entities
 session = Session(engine)
 
 def parse(link: str, from_date: datetime, to_date: datetime, channel_name: str):
-    session.query(news_entity_link).delete()
-    session.query(Entity).delete()
-    session.query(News).delete()
-    session.query(Digest).delete()
-    session.commit()
+
 
     url = convert_url(link)
     messages = get_messages_from_channel(url, from_date, to_date, channel_name)
