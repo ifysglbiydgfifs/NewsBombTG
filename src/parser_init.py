@@ -32,7 +32,5 @@ def parse(link: str, from_date: datetime, to_date: datetime, channel_name: str):
             session.add(new_news)
             session.commit()
 
-    extract_and_save_entities(messages)
-    clusterization_start()
 
     return messages

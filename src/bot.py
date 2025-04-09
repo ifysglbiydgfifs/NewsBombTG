@@ -1,10 +1,14 @@
 from telegram import ReplyKeyboardMarkup, KeyboardButton, WebAppInfo, Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
 from sqlalchemy.orm import Session
-from models import engine, User, UserChannel, Entity, news_entity_link, Digest
+from models import engine, User, UserChannel, Entity, news_entity_link, Digest, News
 from parser_init import parse
 from datetime import datetime
 import asyncio
+
+import parser_init
+from clusterization import clusterization_start
+from entities_extractor import extract_and_save_entities
 
 START_DATE, END_DATE, ADD_CHANNEL, REMOVE_CHANNEL = range(4)  # Добавили REMOVE_CHANNEL
 session = Session(engine)
@@ -30,7 +34,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [KeyboardButton("▶️ Начать парсинг")],
         [KeyboardButton("⭐ Избранные каналы")],
         [KeyboardButton("➕ Добавить в избранное")],
-        [KeyboardButton("➖ Удалить из избранного")],  # Кнопка для удаления
+        [KeyboardButton("➖ Удалить из избранного")],
         [KeyboardButton("🌐 Открыть веб-приложение")],
         [KeyboardButton("🛠 Админ-панель")]
     ]
@@ -53,6 +57,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❗ Добавьте хотя бы один канал в избранное.")
             return ConversationHandler.END
         context.user_data['favorites'] = favorites
+        context.user_data['action'] = 'parse'
         await update.message.reply_text("Введите дату начала (ГГГГ-ММ-ДД):")
         return START_DATE
 
@@ -70,7 +75,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Отправьте ссылку на канал:")
         return ADD_CHANNEL
 
-    elif text == "➖ Удалить из избранного":  # Новый блок для удаления
+    elif text == "➖ Удалить из избранного":
         user_id = update.effective_user.id
         db_user = session.query(User).filter_by(telegram_id=user_id).first()
         favorites = session.query(UserChannel).filter_by(user_id=db_user.id).all()
@@ -83,6 +88,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return REMOVE_CHANNEL
 
     elif text == "🌐 Открыть веб-приложение":
+        context.user_data['action'] = 'web'
         await update.message.reply_text("Введите дату начала (ГГГГ-ММ-ДД):")
         return START_DATE
 
@@ -94,26 +100,77 @@ async def get_start_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Введите дату конца (ГГГГ-ММ-ДД):")
     return END_DATE
 
-async def get_end_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+async def get_end_date_parse(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        start_date = datetime.strptime(context.user_data['start_date'], '%Y-%m-%d')
+        end_date = datetime.strptime(update.message.text, '%Y-%m-%d')
+        favorites = context.user_data['favorites']
+
+        await update.message.reply_text("❗ Парсинг в процессе. Пожалуйста, подождите.")
+
+        for fav in favorites:
+            link = fav.channel_url
+            channel_name = link.split("/")[-1]
+            parse(link, start_date, end_date, channel_name)
+
+        await update.message.reply_text(f"✅ Парсинг завершен.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {e}")
+    return ConversationHandler.END
+
+
+async def get_end_date_web(update: Update, context: ContextTypes.DEFAULT_TYPE):
     start_date = context.user_data['start_date']
     end_date = update.message.text
+    url = f"https://news-bomb-production.up.railway.app/?start_date={start_date}&end_date={end_date}"
+
+    await update.message.reply_text("❗ Выделение сущностей в процессе. Пожалуйста, подождите.")
+
+    session = Session(engine)
+    session.query(news_entity_link).delete()
+    session.query(Entity).delete()
+    session.query(Digest).delete()
+    session.commit()
 
     try:
-        # Проверим формат дат
-        datetime.strptime(start_date, '%Y-%m-%d')
-        datetime.strptime(end_date, '%Y-%m-%d')
+        start_date = datetime.strptime(start_date, '%Y-%m-%d')
+        end_date = datetime.strptime(end_date, '%Y-%m-%d')
 
-        # После получения дат открываем веб-приложение с параметрами
-        url = f"https://news-bomb-production.up.railway.app/?start_date={start_date}&end_date={end_date}"
-        await update.message.reply_text(f"Открою веб-приложение с датами:\nНачало: {start_date}\nКонец: {end_date}",
-                                       reply_markup=ReplyKeyboardMarkup([[
-                                           KeyboardButton("Открыть приложение", web_app=WebAppInfo(url))
-                                       ]]))
-    except ValueError:
-        await update.message.reply_text("❌ Неверный формат даты. Пожалуйста, введите даты в формате ГГГГ-ММ-ДД.")
-        return END_DATE
+        start_timestamp = int(start_date.timestamp() * 1000)
+        end_timestamp = int(end_date.timestamp() * 1000)
+
+        messages = session.query(News).filter(News.time >= start_timestamp, News.time <= end_timestamp).all()
+
+        if not messages:
+            await update.message.reply_text("❌ Не найдено сообщений за указанный период.")
+            return ConversationHandler.END
+
+        extract_and_save_entities(messages)
+        clusterization_start()
+
+        await update.message.reply_text(
+            f"Открываю веб-приложение с датами: {start_date.strftime('%Y-%m-%d')} по {end_date.strftime('%Y-%m-%d')}.")
+        await update.message.reply_text("Перейдите по ссылке, чтобы увидеть новости:",
+                                        reply_markup=ReplyKeyboardMarkup([[
+                                            KeyboardButton("Открыть приложение", web_app=WebAppInfo(url))
+                                        ]]))
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка при обработке дат: {e}")
 
     return ConversationHandler.END
+
+
+async def get_end_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    end_date = update.message.text
+    context.user_data['end_date'] = end_date
+
+    # В зависимости от контекста, выполняем нужную логику
+    if context.user_data.get('action') == 'parse':
+        return await get_end_date_parse(update, context)  # Для парсинга
+    elif context.user_data.get('action') == 'web':
+        return await get_end_date_web(update, context)  # Для веб-приложения
 
 async def add_to_favorites(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
@@ -181,7 +238,7 @@ async def view_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(stats)
 
 def main():
-    app = Application.builder().token("YOUR_BOT_TOKEN").build()
+    app = Application.builder().token("7735571468:AAFlFNzK9K68hpkafy3e_GzHpYqqzzk722U").build()
 
     conv_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler)],
