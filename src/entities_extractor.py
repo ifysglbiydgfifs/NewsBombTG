@@ -35,8 +35,8 @@ def extract_and_save_entities(messages):
     topics_to_news = {}
 
     for message in messages:
-        text = message.text  # Используем точечную нотацию
-        link = message.link  # Используем точечную нотацию
+        text = message.text
+        link = message.link
         print(link)
         print(f"\n📌 Обрабатываем новость: {text[:100]}...")
 
@@ -88,15 +88,14 @@ def extract_and_save_entities(messages):
             topic = extracted_entities[0][1]
             if topic not in topics_to_news:
                 topics_to_news[topic] = []
-            topics_to_news[topic].append(message)  # Здесь мы добавляем объект News
+            topics_to_news[topic].append(message)
 
-    # Формирование дайджестов
     for topic, news_list in topics_to_news.items():
         existing_digest = session.query(Digest).filter_by(type=topic).first()
 
         if not existing_digest:
             print(f"❗ Тема '{topic}' не найдена в таблице дайджестов, создаем новый.")
-            digest_content = generate_digest(news_list, topic)  # Здесь news_list — это список объектов News
+            digest_content = generate_digest(news_list, topic)
             new_digest = Digest(type=topic, content=digest_content)
             session.add(new_digest)
             session.commit()

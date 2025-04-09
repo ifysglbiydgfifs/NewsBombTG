@@ -1,4 +1,5 @@
-from telegram import ReplyKeyboardMarkup, KeyboardButton, WebAppInfo, Update
+from telegram import ReplyKeyboardMarkup, KeyboardButton, WebAppInfo, Update, InlineKeyboardButton, \
+    InlineKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
 from sqlalchemy.orm import Session
 from models import engine, User, UserChannel, Entity, news_entity_link, Digest, News
@@ -16,6 +17,16 @@ session = Session(engine)
 ADMIN_ID = 123456789
 is_parsing = False
 
+keyboard = [
+        [KeyboardButton("▶️ Начать парсинг")],
+        [KeyboardButton("⭐ Избранные каналы")],
+        [KeyboardButton("➕ Добавить в избранное")],
+        [KeyboardButton("➖ Удалить из избранного")],
+        [KeyboardButton("🌐 Открыть веб-приложение")],
+        [KeyboardButton("🛠 Админ-панель")]
+    ]
+markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
 def is_admin(user_id):
     return user_id == ADMIN_ID
 
@@ -30,15 +41,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session.add(new_user)
         session.commit()
 
-    keyboard = [
-        [KeyboardButton("▶️ Начать парсинг")],
-        [KeyboardButton("⭐ Избранные каналы")],
-        [KeyboardButton("➕ Добавить в избранное")],
-        [KeyboardButton("➖ Удалить из избранного")],
-        [KeyboardButton("🌐 Открыть веб-приложение")],
-        [KeyboardButton("🛠 Админ-панель")]
-    ]
-    markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
     await update.message.reply_text("Выберите действие:", reply_markup=markup)
 
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -100,77 +103,112 @@ async def get_start_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Введите дату конца (ГГГГ-ММ-ДД):")
     return END_DATE
 
-
 async def get_end_date_parse(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['is_busy'] = True
+
     try:
         start_date = datetime.strptime(context.user_data['start_date'], '%Y-%m-%d')
         end_date = datetime.strptime(update.message.text, '%Y-%m-%d')
         favorites = context.user_data['favorites']
 
-        await update.message.reply_text("❗ Парсинг в процессе. Пожалуйста, подождите.")
+        await update.message.reply_text("🔄 Парсинг начался...", reply_markup=ReplyKeyboardRemove())
+
+        anim_msg = await update.message.reply_text("🔄 Парсинг")
+        previous_text = "🔄 Парсинг"
+
+        for i in range(10):
+            dots = "." * (i % 4)
+            current_text = f"🔄 Парсинг{dots}"
+            if current_text != previous_text:
+                await anim_msg.edit_text(current_text)
+                previous_text = current_text
+            await asyncio.sleep(1.5)
 
         for fav in favorites:
             link = fav.channel_url
             channel_name = link.split("/")[-1]
             parse(link, start_date, end_date, channel_name)
 
-        await update.message.reply_text(f"✅ Парсинг завершен.")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Ошибка: {e}")
-    return ConversationHandler.END
+        await anim_msg.delete()
+        await update.message.reply_text("✅ Парсинг завершен.", reply_markup=markup)
 
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {e}", reply_markup=markup)
+    finally:
+        context.user_data['is_busy'] = False
+
+    return ConversationHandler.END
 
 async def get_end_date_web(update: Update, context: ContextTypes.DEFAULT_TYPE):
     start_date = context.user_data['start_date']
     end_date = update.message.text
     url = f"https://news-bomb-production.up.railway.app/?start_date={start_date}&end_date={end_date}"
 
-    await update.message.reply_text("❗ Выделение сущностей в процессе. Пожалуйста, подождите.")
+    context.user_data['is_busy'] = True
+    await update.message.reply_text("🔄 Выделение сущностей...", reply_markup=ReplyKeyboardRemove())
 
-    session = Session(engine)
-    session.query(news_entity_link).delete()
-    session.query(Entity).delete()
-    session.query(Digest).delete()
-    session.commit()
+    anim_msg = await update.message.reply_text("🔄 Выделение сущностей")
+    previous_text = "🔄 Выделение сущностей"
 
     try:
-        start_date = datetime.strptime(start_date, '%Y-%m-%d')
-        end_date = datetime.strptime(end_date, '%Y-%m-%d')
+        for i in range(10):
+            dots = "." * (i % 4)
+            current_text = f"🔄 Выделение сущностей{dots}"
+            if current_text != previous_text:
+                await anim_msg.edit_text(current_text)
+                previous_text = current_text
+            await asyncio.sleep(1.5)
 
-        start_timestamp = int(start_date.timestamp() * 1000)
-        end_timestamp = int(end_date.timestamp() * 1000)
+        session = Session(engine)
+        session.query(news_entity_link).delete()
+        session.query(Entity).delete()
+        session.query(Digest).delete()
+        session.commit()
 
-        messages = session.query(News).filter(News.time >= start_timestamp, News.time <= end_timestamp).all()
+        start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+        end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+        start_ts = int(start_dt.timestamp() * 1000)
+        end_ts = int(end_dt.timestamp() * 1000)
+
+        messages = session.query(News).filter(News.time >= start_ts, News.time <= end_ts).all()
 
         if not messages:
-            await update.message.reply_text("❌ Не найдено сообщений за указанный период.")
+            await anim_msg.delete()
+            await update.message.reply_text("❌ Не найдено сообщений за указанный период.", reply_markup=markup)
             return ConversationHandler.END
 
         extract_and_save_entities(messages)
         clusterization_start()
 
+        await anim_msg.delete()
         await update.message.reply_text(
-            f"Открываю веб-приложение с датами: {start_date.strftime('%Y-%m-%d')} по {end_date.strftime('%Y-%m-%d')}.")
-        await update.message.reply_text("Перейдите по ссылке, чтобы увидеть новости:",
-                                        reply_markup=ReplyKeyboardMarkup([[
-                                            KeyboardButton("Открыть приложение", web_app=WebAppInfo(url))
-                                        ]]))
+            f"Открываю веб-приложение с датами: {start_dt.strftime('%Y-%m-%d')} по {end_dt.strftime('%Y-%m-%d')}.",
+            reply_markup=markup
+        )
+
+        keyboard = [
+            [InlineKeyboardButton("Открыть приложение", web_app=WebAppInfo(url))],
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await update.message.reply_text("Перейдите по ссылке, чтобы увидеть новости:", reply_markup=reply_markup)
 
     except Exception as e:
-        await update.message.reply_text(f"❌ Ошибка при обработке дат: {e}")
+        await anim_msg.delete()
+        await update.message.reply_text(f"❌ Ошибка при обработке дат: {e}", reply_markup=markup)
+    finally:
+        context.user_data['is_busy'] = False
 
     return ConversationHandler.END
-
 
 async def get_end_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     end_date = update.message.text
     context.user_data['end_date'] = end_date
 
-    # В зависимости от контекста, выполняем нужную логику
     if context.user_data.get('action') == 'parse':
-        return await get_end_date_parse(update, context)  # Для парсинга
+        return await get_end_date_parse(update, context)
     elif context.user_data.get('action') == 'web':
-        return await get_end_date_web(update, context)  # Для веб-приложения
+        return await get_end_date_web(update, context)
 
 async def add_to_favorites(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()

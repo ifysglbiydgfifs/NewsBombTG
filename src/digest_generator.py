@@ -4,7 +4,6 @@ from datetime import datetime
 from models import Digest, SessionLocal, Entity
 
 def generate_digest(news_list, topic=None):
-    # Изменяем доступ к атрибутам объектов News
     news_text = "\n".join([f"➖ {news.text} ({news.link})" for news in news_list])
 
     prompt = f"""Ты — помощник для составления новостных дайджестов. 
